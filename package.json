@@ -2,7 +2,7 @@
   "name": "gemd",
   "displayName": "Gemd",
   "description": "Open your Obsidian vault in Visual Studio Code: live preview, wikilinks, backlinks, callouts, math and Kanban boards.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "kaangoker",
   "author": {
     "name": "Kaan Goker"
@@ -149,6 +149,6 @@
     "katex": "^0.16.11"
   },
   "activationEvents": [
-    "onStartupFinished"
+    "workspaceContains:.obsidian"
   ]
 }

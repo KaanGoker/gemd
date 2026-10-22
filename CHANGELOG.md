@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Gemd starts only in a workspace with an `.obsidian` folder; Markdown files still open in Gemd anywhere.
+- The New tab icon is a PNG.
+- License notices for the bundled open source packages in `THIRD_PARTY_NOTICES.md`.
+- The README starts with the cover image.
+
 ## 1.0.0
 
 - Live preview for Obsidian notes: wikilinks, callouts, image embeds, tables and KaTeX math.

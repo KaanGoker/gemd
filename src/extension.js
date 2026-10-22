@@ -63,7 +63,7 @@ let home = null;
 function showHome(ctx) {
   if (home) return home.reveal();
   home = vscode.window.createWebviewPanel('gemd.home', 'New tab', vscode.ViewColumn.Active, { enableScripts: true });
-  home.iconPath = vscode.Uri.joinPath(ctx.extensionUri, 'media', 'tab.svg');
+  home.iconPath = vscode.Uri.joinPath(ctx.extensionUri, 'media', 'tab.png');
   const btn = (cmd, label, key) => `<button data-cmd="${cmd}"><span>${label}</span>${key ? `<kbd>${key}</kbd>` : ''}</button>`;
   home.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>body{height:100vh;margin:0;display:flex;align-items:center;justify-content:center;font:15px -apple-system,"Segoe UI",sans-serif;color:var(--vscode-foreground)}
