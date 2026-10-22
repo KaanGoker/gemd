@@ -1,4 +1,4 @@
-<p align="center"><img src="media/icon.png" width="96" alt="Gemd"></p>
+![Gemd: Markdown notes and boards, live as you type](cover/cover-2x1.png)
 
 # Gemd
 
