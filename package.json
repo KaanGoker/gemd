@@ -1,7 +1,7 @@
 {
   "name": "gemd",
   "displayName": "Gemd",
-  "description": "Open your Obsidian vault in VS Code: live preview, wikilinks, backlinks, callouts, math and Kanban boards.",
+  "description": "Open your Obsidian vault in Visual Studio Code: live preview, wikilinks, backlinks, callouts, math and Kanban boards.",
   "version": "1.0.0",
   "publisher": "kaangoker",
   "author": {

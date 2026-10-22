@@ -2,7 +2,7 @@
 
 # Gemd
 
-Your Obsidian vault in VS Code. Write notes, follow links and move Kanban cards in one program instead of two.
+Your Obsidian vault in Visual Studio Code. Write notes, follow links and move Kanban cards in one program instead of two.
 
 ![A note with callouts, a table and math](docs/note.png)
 
@@ -76,4 +76,6 @@ code --install-extension gemd-1.0.0.vsix
 
 ## License
 
-MIT. Gemd is an independent project and is not affiliated with Obsidian.
+MIT.
+
+Obsidian and Visual Studio Code are trademarks of their owners. Gemd is an independent project and is not affiliated with or endorsed by Obsidian or Microsoft.
