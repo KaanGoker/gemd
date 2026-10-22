@@ -1,0 +1,171 @@
+:root {
+  --text: var(--vscode-editor-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --bg: var(--vscode-editor-background);
+  --line: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  --accent: var(--vscode-textLink-foreground);
+  --code-bg: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
+  --sans: -apple-system, "Segoe UI", Inter, Ubuntu, sans-serif;
+  --mono: var(--vscode-editor-font-family, monospace);
+  --size: 16px;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+#root { height: 100%; }
+#bar { position: fixed; top: 8px; right: 16px; z-index: 10; display: flex; gap: 6px; align-items: center; font: calc(var(--size) * 0.8) var(--sans); }
+#bar button.icon-btn { background: none; color: var(--muted); padding: 5px; display: inline-flex; }
+#bar button.icon-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+#bar button, #bar input {
+  font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent;
+  color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+}
+#bar button { cursor: pointer; }
+#bar button.on { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+#bar .group { display: inline-flex; gap: 2px; }
+#bar input { width: 160px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-color: var(--line); }
+
+/* ---------- editor ---------- */
+.editor .cm-editor { height: 100%; background: var(--bg); color: var(--text); }
+.editor .cm-editor.cm-focused { outline: none; }
+.editor .cm-scroller { font: var(--size)/1.65 var(--sans); }
+.editor .cm-content { max-width: 760px; margin: 0 auto; padding: 48px 32px 40vh; caret-color: var(--text); }
+.editor .cm-cursor { border-left-color: var(--text); }
+.editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--vscode-editor-selectionBackground) !important; }
+
+.cm-h { font-weight: 700; line-height: 1.3; }
+.cm-h1 { font-size: 1.9em; padding-top: 0.6em; }
+.cm-h2 { font-size: 1.55em; padding-top: 0.5em; }
+.cm-h3 { font-size: 1.3em; padding-top: 0.4em; }
+.cm-h4 { font-size: 1.12em; }
+.cm-h5, .cm-h6 { font-size: 1em; color: var(--muted); }
+.cm-strong { font-weight: 700; }
+.cm-em { font-style: italic; }
+.cm-strike, .cm-done { text-decoration: line-through; color: var(--muted); }
+.cm-code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); border-radius: 3px; padding: 1px 3px; }
+.cm-codeblock { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); }
+.cm-link, .cm-wikilink { color: var(--accent); cursor: pointer; }
+.cm-wikilink { text-decoration: none; }
+.cm-link:hover, .cm-wikilink:hover { text-decoration: underline; }
+.cm-tag { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 10px; padding: 0 6px; font-size: 0.9em; }
+.cm-bullet { color: var(--muted); padding-right: 2px; }
+.cm-check { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
+.cm-fm { font-family: var(--mono); font-size: 0.82em; color: var(--muted); }
+.cm-hr { border-bottom: 1px solid var(--line); line-height: 0.6; }
+.cm-quote { border-left: 3px solid var(--line); padding-left: 14px !important; color: var(--muted); }
+.cm-embed { max-width: 100%; display: inline-block; vertical-align: top; border-radius: 4px; }
+
+.cm-callout { --c: 68, 138, 255; background: rgba(var(--c), 0.1); border-left: 3px solid rgb(var(--c)); padding-left: 14px !important; }
+.cm-callout-first { padding-top: 6px; }
+.cm-callout-title { color: rgb(var(--c)); font-weight: 600; }
+.cm-callout-success, .cm-callout-check, .cm-callout-done { --c: 8, 185, 78; }
+.cm-callout-tip, .cm-callout-hint, .cm-callout-important { --c: 0, 191, 188; }
+.cm-callout-warning, .cm-callout-caution, .cm-callout-attention { --c: 236, 117, 0; }
+.cm-callout-danger, .cm-callout-error, .cm-callout-bug, .cm-callout-failure, .cm-callout-fail { --c: 233, 49, 71; }
+.cm-callout-question, .cm-callout-help, .cm-callout-faq { --c: 236, 117, 0; }
+.cm-callout-example { --c: 120, 82, 238; }
+.cm-callout-quote, .cm-callout-cite { --c: 158, 158, 158; }
+
+/* ---------- tables in notes ---------- */
+.cm-table-wrap { overflow-x: auto; margin: 6px 0; cursor: text; }
+.cm-table-wrap table { border-collapse: collapse; font-size: 0.94em; line-height: 1.45; }
+.cm-table-wrap th, .cm-table-wrap td { border: 1px solid var(--line); padding: 6px 12px; vertical-align: top; }
+.cm-table-wrap th { font-weight: 600; text-align: left; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.cm-table-wrap tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.cm-table-wrap code, .card code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); border-radius: 3px; padding: 0 4px; }
+.cm-table-wrap a, .card a, .table-view a { color: var(--accent); cursor: pointer; }
+mark { background: rgba(255, 208, 0, 0.35); color: inherit; border-radius: 2px; padding: 0 2px; }
+
+/* ---------- board ---------- */
+.board-root { font: calc(var(--size) * 0.875)/1.5 var(--sans); }
+.board { --lane: 300px; display: flex; gap: 14px; align-items: flex-start; height: 100%; box-sizing: border-box; overflow: auto; padding: 52px 20px 20px; }
+.lane {
+  flex: 0 0 var(--lane); max-height: 100%; display: flex; flex-direction: column; box-sizing: border-box;
+  background: color-mix(in srgb, var(--vscode-sideBar-background, #888) 80%, transparent);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px;
+}
+.lane.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.lane.complete header h3::after { content: " ✓"; color: #08b94e; }
+.lane.archive { opacity: 0.75; border-style: dashed; }
+.lane.over { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lane header { display: flex; align-items: center; gap: 4px; margin: 0 2px 8px; cursor: grab; }
+.lane header h3 { flex: 1; margin: 0; font-size: 1.05em; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane header small { color: var(--muted); background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 10px; padding: 0 8px; font-size: 0.85em; }
+.lane header textarea { flex: 1; }
+.lane .cards { overflow-y: auto; min-height: 8px; margin: 0 -4px; padding: 0 4px; }
+.lane.collapsed { flex: 0 0 44px; padding: 10px 4px; }
+.lane.collapsed header { flex-direction: column; margin: 0; }
+.lane.collapsed header h3 { writing-mode: vertical-rl; white-space: nowrap; overflow: visible; }
+.lane.collapsed header .more { display: none; }
+svg.icon { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
+.lane header .grip { color: var(--muted); opacity: 0.6; display: inline-flex; cursor: grab; }
+.lane .fold svg { transition: transform 0.15s; }
+.lane.collapsed .fold svg { transform: rotate(-90deg); }
+.lane.collapsed .grip { display: none; }
+.lane-edit { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 0.9em; }
+.lane-edit input:not([type]) { font: inherit; font-size: 1.1em; font-weight: 650; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 6px; }
+.lane-edit label { display: flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+button.fold, button.more { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; padding: 3px; border-radius: 4px; display: inline-flex; }
+button.fold:hover, button.more:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+
+.card {
+  position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; margin-bottom: 8px; cursor: grab;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); transition: box-shadow 0.12s, transform 0.12s, border-color 0.12s;
+}
+.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25); }
+.card.dragging { opacity: 0.4; }
+.card.over { box-shadow: 0 -3px 0 var(--accent); }
+.card.done > .row .body { color: var(--muted); text-decoration: line-through; }
+.card .row { display: flex; gap: 8px; align-items: flex-start; }
+.card .body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.card .more { visibility: hidden; margin: -2px -4px 0 0; }
+.card:hover .more { visibility: visible; }
+.card input[type=checkbox] { margin: 3px 0 0; cursor: pointer; flex: none; accent-color: var(--accent); }
+.card ul { list-style: none; margin: 6px 0 0 22px; padding: 0; font-size: 0.93em; }
+.card li { display: flex; gap: 6px; padding: 1px 0; }
+.card li.done span { color: var(--muted); text-decoration: line-through; }
+.card .progress { height: 3px; margin: 8px 0 0 22px; border-radius: 2px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.card .progress::before { content: ""; display: block; height: 100%; width: calc(var(--p) * 100%); border-radius: 2px; background: #08b94e; }
+.card textarea, .lane textarea { width: 100%; box-sizing: border-box; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--accent); border-radius: 8px; padding: 8px; resize: vertical; margin-bottom: 8px; }
+.tag { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 10px; padding: 0 6px; font-size: 0.9em; white-space: nowrap; }
+.date, .time { font-size: 0.85em; padding: 0 6px; border-radius: 10px; white-space: nowrap; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.date.now { background: rgba(8, 185, 78, 0.25); }
+.date.past { background: rgba(233, 49, 71, 0.25); }
+.lane .add { width: 100%; text-align: left; background: none; border: 0; color: var(--muted); padding: 6px 4px; cursor: pointer; font: inherit; border-radius: 6px; }
+.lane .add:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.add-lane { flex: 0 0 auto; background: none; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); padding: 10px 16px; cursor: pointer; font: inherit; }
+.add-lane:hover { color: var(--text); }
+.board > textarea { flex: 0 0 var(--lane); font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--accent); border-radius: 8px; padding: 8px; }
+
+.view-list .board { flex-direction: column; align-items: stretch; max-width: 900px; margin: 0 auto; }
+.view-list .lane { flex: none; max-height: none; }
+.view-list .lane.collapsed { flex: none; }
+.view-list .lane.collapsed header { flex-direction: row; }
+.view-list .lane.collapsed header h3 { writing-mode: initial; }
+.view-list .lane .cards { overflow: visible; }
+
+.table-view { height: 100%; overflow: auto; box-sizing: border-box; padding: 52px 20px 20px; }
+.table-view table { border-collapse: collapse; width: 100%; }
+.table-view th, .table-view td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.table-view th { position: sticky; top: 0; background: var(--bg); color: var(--muted); font-weight: 600; }
+.table-view td.done { color: var(--muted); text-decoration: line-through; }
+
+.menu { position: fixed; z-index: 20; min-width: 190px; padding: 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--vscode-menu-background, var(--bg)); color: var(--vscode-menu-foreground, var(--text)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); font: calc(var(--size) * 0.82) var(--sans); max-height: 80vh; overflow-y: auto; }
+.menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+.menu button:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-menu-selectionForeground, inherit); }
+.menu button.danger { color: #e93147; }
+.menu button span { flex: 1; }
+.menu button svg.icon { color: var(--muted); }
+.menu button.danger svg.icon { color: #e93147; }
+.menu .menu { max-height: 70vh; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.datepick { position: fixed; top: 40%; left: 50%; opacity: 0; pointer-events: none; }
+.cm-panels { background: var(--vscode-editorWidget-background, var(--bg)); color: var(--text); border-color: var(--line) !important; font: 13px var(--sans); }
+.cm-panels input, .cm-panels button { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--line); border-radius: 3px; }
+.cm-searchMatch { background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 200, 0, 0.3)); }
+.cm-searchMatch-selected { background: var(--vscode-editor-findMatchBackground, rgba(255, 150, 0, 0.5)); }
+.cm-embed.missing { display: inline-block; min-width: 120px; padding: 4px 8px; border: 1px dashed var(--line); color: var(--muted); font-size: 0.85em; }
+.cm-tooltip-autocomplete ul { font-family: var(--sans) !important; }
+.cm-tooltip-autocomplete { background: var(--vscode-editorSuggestWidget-background, var(--bg)) !important; color: var(--text); border: 1px solid var(--line) !important; font: 13px var(--sans); }
+.cm-tooltip-autocomplete li[aria-selected] { background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground)) !important; color: inherit !important; }
+.cm-math { cursor: text; }
+.cm-math-block { padding: 6px 0; overflow-x: auto; cursor: text; text-align: center; }

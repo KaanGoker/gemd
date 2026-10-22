@@ -1,0 +1,154 @@
+{
+  "name": "gemd",
+  "displayName": "Gemd",
+  "description": "Open your Obsidian vault in VS Code: live preview, wikilinks, backlinks, callouts, math and Kanban boards.",
+  "version": "1.0.0",
+  "publisher": "kaangoker",
+  "author": {
+    "name": "Kaan Goker"
+  },
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0f1b2d",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KaanGoker/gemd"
+  },
+  "bugs": {
+    "url": "https://github.com/KaanGoker/gemd/issues"
+  },
+  "homepage": "https://github.com/KaanGoker/gemd#readme",
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "obsidian",
+    "markdown",
+    "kanban",
+    "wikilinks",
+    "backlinks",
+    "notes",
+    "pkm",
+    "live preview",
+    "callouts",
+    "katex"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "gemd.markdown",
+        "displayName": "Gemd",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "gemd.backlinks",
+          "name": "Backlinks"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gemd.open",
+        "title": "Open in Gemd",
+        "icon": "$(book)"
+      },
+      {
+        "command": "gemd.openText",
+        "title": "Open as Text",
+        "icon": "$(code)"
+      },
+      {
+        "command": "gemd.newNote",
+        "title": "Gemd: New Note"
+      },
+      {
+        "command": "gemd.newBoard",
+        "title": "Gemd: New Board"
+      },
+      {
+        "command": "gemd.home",
+        "title": "Gemd: New Tab Page"
+      },
+      {
+        "command": "gemd.goToFolder",
+        "title": "Gemd: Go to Folder"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "gemd.open",
+          "when": "resourceExtname == .md && activeCustomEditorId != gemd.markdown",
+          "group": "navigation"
+        },
+        {
+          "command": "gemd.openText",
+          "when": "activeCustomEditorId == gemd.markdown",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "gemd.newNote",
+        "key": "ctrl+n",
+        "mac": "cmd+n",
+        "when": "gemd.isVault"
+      },
+      {
+        "command": "gemd.goToFolder",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "!editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Gemd",
+      "properties": {
+        "gemd.fontSize": {
+          "type": "number",
+          "default": 16,
+          "minimum": 10,
+          "maximum": 28,
+          "description": "Text size in px for notes; boards and the toolbar scale with it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "mkdir -p media/katex/fonts && cp node_modules/katex/dist/katex.min.css media/katex/ && cp node_modules/katex/dist/fonts/*.woff2 media/katex/fonts/ && esbuild src/extension.js --bundle --platform=node --external:vscode --outfile=dist/extension.js && esbuild src/webview.js --bundle --format=iife --minify --outfile=dist/webview.js",
+    "test": "node --test test/*.test.mjs",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.36.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.25.0",
+    "katex": "^0.16.11"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ]
+}
