@@ -60,7 +60,7 @@ ext.activate({ subscriptions: { push: (...a) => subs.push(...a) }, extensionUri:
 
 let receive;
 function open(text, eol) {
-  doc = { text, eol, getText() { return this.text; }, uri: uri('/v/a.md') };
+  doc = { text, eol, saves: 0, getText() { return this.text; }, save() { this.saves++; return Promise.resolve(true); }, uri: uri('/v/a.md') };
   posted.length = 0;
   const panel = {
     webview: { options: {}, cspSource: 'csp', asWebviewUri: u => 'webview:' + (u.path || u), postMessage: m => posted.push(m), onDidReceiveMessage: f => { receive = f; } },
@@ -79,6 +79,16 @@ test('CRLF file: edits land at the right place, keep CRLF, and do not echo back'
   await settle();
   assert.equal(doc.text, '# A\r\nnew line\r\n- [ ] one\r\n- [x] two\r\n');
   assert.equal(posted.filter(m => m.type === 'update').length, 0);
+});
+
+test('edits save the file by themselves, quick edits in one save', async () => {
+  open('- [ ] one\n', '\n');
+  receive({ type: 'edit', changes: [{ from: { line: 0, ch: 3 }, to: { line: 0, ch: 4 }, insert: 'x' }] });
+  receive({ type: 'edit', changes: [{ from: { line: 0, ch: 3 }, to: { line: 0, ch: 4 }, insert: ' ' }] });
+  await settle();
+  assert.equal(doc.saves, 0);
+  await new Promise(r => setTimeout(r, 400));
+  assert.equal(doc.saves, 1);
 });
 
 test('outside changes (undo, Syncthing) are sent to the webview', () => {

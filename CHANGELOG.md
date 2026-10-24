@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Edits save on their own, like Obsidian, so a file changed by another program (Syncthing, git, an AI agent) shows up at once.
+
 ## 1.0.1
 
 - Gemd starts only in a workspace with an `.obsidian` folder; Markdown files still open in Gemd anywhere.

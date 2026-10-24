@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+
+      # Marketplace id is kaangoker.gemd-notes
+      - name: VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath gemd-notes-*.vsix
+
+      # Open VSX id is kaangoker.gemd
+      - name: Open VSX
+        if: env.OVSX_PAT != ''
+        run: |
+          npm pkg set name=gemd
+          npx vsce package --no-dependencies -o gemd.vsix
+          npx --yes ovsx publish gemd.vsix -p "$OVSX_PAT"
+
+      - name: GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gh release create "$GITHUB_REF_NAME" gemd-notes-*.vsix --title "Gemd ${GITHUB_REF_NAME#v}" --notes "See CHANGELOG.md" || gh release upload "$GITHUB_REF_NAME" gemd-notes-*.vsix --clobber

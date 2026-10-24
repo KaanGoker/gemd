@@ -130,15 +130,18 @@ function provider(ctx) {
       };
       panel.webview.html = html(panel.webview, ctx.extensionUri);
       const post = () => panel.webview.postMessage({ type: 'update', text: doc.getText() });
-      let pending = 0, queue = Promise.resolve();
+      let pending = 0, queue = Promise.resolve(), saveTimer;
       // Changes from elsewhere (undo, git, Syncthing, another editor) go to the webview; our own edits do not echo back.
       const sub = vscode.workspace.onDidChangeTextDocument(e => {
         if (e.document === doc && pending === 0 && e.contentChanges.length) post();
       });
+      // Save like Obsidian: a clean document is reloaded by VS Code when the file changes on disk; a dirty one is not.
+      const save = () => { saveTimer = undefined; doc.save(); };
+      const autosave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); };
       const cfg = vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('gemd.fontSize')) panel.webview.postMessage({ type: 'font', fontSize: fontSize() });
       });
-      panel.onDidDispose(() => { sub.dispose(); cfg.dispose(); });
+      panel.onDidDispose(() => { sub.dispose(); cfg.dispose(); if (saveTimer) { clearTimeout(saveTimer); save(); } });
       panel.webview.onDidReceiveMessage(m => {
         if (m.type === 'ready') {
           panel.webview.postMessage({ type: 'init', text: doc.getText(), fontSize: fontSize(), title: path.posix.basename(doc.uri.path, '.md') });
@@ -154,6 +157,7 @@ function provider(ctx) {
             let ok = false;
             try { ok = await vscode.workspace.applyEdit(edit); } finally { pending--; }
             if (!ok) post(); // resync the webview so it never drifts from the file
+            else autosave();
           });
         } else if (m.type === 'open') openLink(m.target, doc.uri);
         else if (m.type === 'warn') vscode.window.showWarningMessage(String(m.text));
