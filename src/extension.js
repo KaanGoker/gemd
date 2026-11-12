@@ -144,7 +144,10 @@ function provider(ctx) {
       panel.onDidDispose(() => { sub.dispose(); cfg.dispose(); if (saveTimer) { clearTimeout(saveTimer); save(); } });
       panel.webview.onDidReceiveMessage(m => {
         if (m.type === 'ready') {
-          panel.webview.postMessage({ type: 'init', text: doc.getText(), fontSize: fontSize(), title: path.posix.basename(doc.uri.path, '.md') });
+          panel.webview.postMessage({
+            type: 'init', text: doc.getText(), fontSize: fontSize(), title: path.posix.basename(doc.uri.path, '.md'),
+            folds: ctx.workspaceState.get('gemd.folds', {})[doc.uri.toString()] || [], outline: ctx.globalState.get('gemd.outline', false),
+          });
           vscode.workspace.findFiles('**/*.md', EXCLUDE).then(files => panel.webview.postMessage({
             type: 'names', names: [...new Set(files.map(u => path.posix.basename(u.path, '.md')))].sort(),
           }));
@@ -159,7 +162,13 @@ function provider(ctx) {
             if (!ok) post(); // resync the webview so it never drifts from the file
             else autosave();
           });
-        } else if (m.type === 'open') openLink(m.target, doc.uri);
+        } else if (m.type === 'folds') {
+          // Folded heading lines per note, like Obsidian; the outline switch is one for all notes.
+          const all = { ...ctx.workspaceState.get('gemd.folds', {}) }, key = doc.uri.toString();
+          if (m.lines.length) all[key] = m.lines.map(Number); else delete all[key];
+          ctx.workspaceState.update('gemd.folds', all);
+        } else if (m.type === 'outline') ctx.globalState.update('gemd.outline', !!m.open);
+        else if (m.type === 'open') openLink(m.target, doc.uri);
         else if (m.type === 'warn') vscode.window.showWarningMessage(String(m.text));
         else if (m.type === 'copy') vscode.env.clipboard.writeText(String(m.text)).then(() => vscode.window.setStatusBarMessage('Link copied', 2000));
         else if (m.type === 'newNote') createNote(vscode.Uri.joinPath(doc.uri, '..'), String(m.name));

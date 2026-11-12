@@ -3,12 +3,13 @@ import { EditorState, Annotation, StateField } from '@codemirror/state';
 import { EditorView, Decoration, ViewPlugin, WidgetType, keymap, drawSelection } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { syntaxTree } from '@codemirror/language';
+import { syntaxTree, ensureSyntaxTree, codeFolding, foldable, foldedRanges, foldEffect, unfoldEffect, foldKeymap } from '@codemirror/language';
 import { search, searchKeymap } from '@codemirror/search';
 import { autocompletion } from '@codemirror/autocomplete';
 import katex from 'katex';
 import { TAG, diffRange } from './kanban.mjs';
 import { vscode, root, text, setText, follow, inline } from './shared.js';
+import { outlineChanged } from './outline.js';
 
 const Remote = Annotation.define();
 const images = new Map(), requested = new Set();
@@ -31,6 +32,29 @@ class Check extends WidgetType {
   }
   ignoreEvent() { return true; }
 }
+// The arrow left of a heading, like Obsidian: shown on hover, always shown while the section is folded.
+class FoldArrow extends WidgetType {
+  constructor(pos, folded) { super(); this.pos = pos; this.folded = folded; }
+  eq(o) { return o.pos === this.pos && o.folded === this.folded; }
+  toDOM(v) {
+    const s = document.createElement('span');
+    s.className = 'cm-fold-arrow' + (this.folded ? ' folded' : '');
+    s.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    s.onmousedown = e => { e.preventDefault(); toggleFold(v, v.state.doc.lineAt(this.pos)); };
+    return s;
+  }
+  ignoreEvent() { return true; }
+}
+
+function toggleFold(v, line) {
+  const effects = [];
+  foldedRanges(v.state).between(line.to, line.to, (from, to) => { if (from === line.to) effects.push(unfoldEffect.of({ from, to })); });
+  if (!effects.length) { const r = foldable(v.state, line.from, line.to); if (r) effects.push(foldEffect.of(r)); }
+  if (effects.length) v.dispatch({ effects });
+}
+
+const foldChanged = tr => tr.effects.some(e => e.is(foldEffect) || e.is(unfoldEffect));
+
 class Text extends WidgetType {
   constructor(text, cls) { super(); this.text = text; this.cls = cls; }
   eq(o) { return o.text === this.text && o.cls === this.cls; }
@@ -68,6 +92,8 @@ function build(v) {
   const line = (pos, cls) => add(doc.lineAt(pos).from, doc.lineAt(pos).from, Decoration.line({ class: cls }));
   const codeLines = new Set();
   const fm = frontMatterEnd(doc);
+  const folded = new Set();
+  foldedRanges(state).between(0, doc.length, from => { folded.add(doc.lineAt(from).number); });
   for (let n = 1; fm && n <= doc.lineAt(fm).number; n++) line(doc.line(n).from, 'cm-fm');
 
   for (const { from, to } of v.visibleRanges) {
@@ -75,7 +101,12 @@ function build(v) {
       if (node.to <= fm) return false;
       const name = node.name, on = isActive(node.from, node.to);
       const h = /^ATXHeading(\d)$/.exec(name);
-      if (h) { line(node.from, 'cm-h cm-h' + h[1]); return; }
+      if (h) {
+        const l = doc.lineAt(node.from);
+        line(l.from, 'cm-h cm-h' + h[1]);
+        if (folded.has(l.number) || foldable(state, l.from, l.to)) add(l.from, l.from, Decoration.widget({ widget: new FoldArrow(l.from, folded.has(l.number)), side: -1 }));
+        return;
+      }
       if (CODE.has(name)) {
         for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) {
           codeLines.add(n);
@@ -305,7 +336,7 @@ function toggleTask(v) {
 const livePreview = ViewPlugin.fromClass(class {
   constructor(v) { this.decorations = build(v); }
   update(u) {
-    if (u.docChanged || u.viewportChanged || u.selectionSet || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
+    if (u.docChanged || u.viewportChanged || u.selectionSet || u.transactions.some(foldChanged) || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
   }
 }, { decorations: p => p.decorations });
 
@@ -334,6 +365,20 @@ function wikiComplete(ctx) {
   return { from: m.from + 2, options: names.map(label => ({ label, apply })), validFor: /^[^\]|#\n]*$/ };
 }
 
+// Folded headings go to the host by line number, so they come back when the note opens again.
+let foldTimer, lastFolds = '';
+const foldsToHost = EditorView.updateListener.of(u => {
+  if (u.docChanged) outlineChanged();
+  if (foldedRanges(u.startState) === foldedRanges(u.state)) return;
+  clearTimeout(foldTimer);
+  foldTimer = setTimeout(() => {
+    const lines = [];
+    foldedRanges(u.view.state).between(0, u.view.state.doc.length, from => { lines.push(u.view.state.doc.lineAt(from).number); });
+    const json = JSON.stringify(lines);
+    if (json !== lastFolds) { lastFolds = json; vscode.postMessage({ type: 'folds', lines }); }
+  }, 300);
+});
+
 const toHost = EditorView.updateListener.of(u => {
   if (!u.docChanged || u.transactions.some(t => t.annotation(Remote))) return;
   const changes = [];
@@ -345,7 +390,7 @@ const toHost = EditorView.updateListener.of(u => {
   vscode.postMessage({ type: 'edit', changes });
 });
 
-export function showEditor() {
+export function showEditor(folds = []) {
   root.innerHTML = '';
   root.className = 'editor';
   const view = new EditorView({
@@ -357,16 +402,28 @@ export function showEditor() {
         EditorView.lineWrapping,
         markdown({ base: markdownLanguage }),
         // Undo and redo belong to VS Code, which owns the document; swallow the keys so the browser does not undo too.
-        keymap.of([{ key: 'Mod-l', run: toggleTask }, { key: 'Mod-z', run: () => true }, { key: 'Mod-y', run: () => true }, { key: 'Mod-Shift-z', run: () => true }, indentWithTab, ...searchKeymap, ...defaultKeymap]),
+        codeFolding(),
+        keymap.of([{ key: 'Mod-l', run: toggleTask }, { key: 'Mod-z', run: () => true }, { key: 'Mod-y', run: () => true }, { key: 'Mod-Shift-z', run: () => true }, indentWithTab, ...searchKeymap, ...foldKeymap, ...defaultKeymap]),
         search({ top: true }),
         autocompletion({ override: [wikiComplete], icons: false }),
         livePreview,
         blockField,
         clicks,
         toHost,
+        foldsToHost,
       ],
     }),
   });
+  // Folds saved last time, only where that line still starts a foldable heading.
+  ensureSyntaxTree(view.state, view.state.doc.length, 500);
+  const effects = [];
+  for (const n of folds) {
+    if (n > view.state.doc.lines) continue;
+    const l = view.state.doc.line(n), r = /^#{1,6}\s/.test(l.text) && foldable(view.state, l.from, l.to);
+    if (r) effects.push(foldEffect.of(r));
+  }
+  lastFolds = JSON.stringify(folds);
+  if (effects.length) view.dispatch({ effects });
   view.focus();
   return view;
 }

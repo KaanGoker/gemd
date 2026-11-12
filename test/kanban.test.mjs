@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from 'node:fs';
 // Optional: a real Obsidian Kanban file for the lossless tests, e.g. GEMD_BOARD=~/vault/To\ Do.md npm test
 const REAL = process.env.GEMD_BOARD;
 const skipReal = !REAL || !existsSync(REAL);
-import { isKanban, parse, moveCard, toggle, apply, addCard, settings, setSetting, cardSource, editCard, deleteCard, duplicateCard, archiveCards, addLane, renameLane, deleteLane, moveLane, sortLane, archiveLane, blockId, foldSplice, rebase, setDate, linkCard, tagsOf, insertCard, diffRange } from '../src/kanban.mjs';
+import { isKanban, parse, moveCard, toggle, apply, addCard, settings, setSetting, cardSource, editCard, deleteCard, duplicateCard, archiveCards, addLane, renameLane, deleteLane, moveLane, sortLane, archiveLane, blockId, foldSplice, rebase, setDate, linkCard, tagsOf, insertCard, diffRange, subtreeSize, moveFlags } from '../src/kanban.mjs';
 
 const sample = '---\n\nkanban-plugin: board\n\n---\n\n## A\n\n- [ ] one #x\n\t- [ ] sub\n- [x] two\n\n\n## B\n\n\n\n## C\n\n- [ ] three\n- plain note\n\n%% kanban:settings\n```\n{"complete-lists":["C"]}\n```\n%%';
 
@@ -147,12 +147,15 @@ test('real board: archive lane is separate, every lane moved to the end and back
   const real = readFileSync(REAL, 'utf8');
   const board = parse(real).filter(l => !l.archive);
   assert.equal(parse(real).filter(l => l.archive).map(l => l.title).join(), 'Archive');
-  for (let i = 0; i < board.length - 1; i++) {
+  // Each top-level lane moves with its sublanes, so the block's head lands `n` lanes from the end.
+  for (let i = 0; i < board.length; i++) {
+    const n = subtreeSize(board, i);
+    if (board[i].parent || i + n === board.length) continue;
     let l = parse(real).filter(x => !x.archive);
     let t = apply(real, moveLane(real, l[i], null));
     l = parse(t).filter(x => !x.archive);
-    assert.equal(l.at(-1).title, board[i].title);
-    t = apply(t, moveLane(t, l.at(-1), l[i]));
+    assert.equal(l.at(-n).title, board[i].title);
+    t = apply(t, moveLane(t, l.at(-n), l[i]));
     assert.equal(t, real, `lane ${board[i].title}`);
   }
 });
@@ -202,4 +205,65 @@ test('card metadata: one tag definition, dates, links from cards, insert at a li
   assert.deepEqual(parse(apply(t, insertCard(parse(t)[0].cards[1].start, 'mid\nline')))[0].cards.map(x => x.text), ['call Alan @{2026-10-01} #job', 'mid line', 'plain']);
   assert.deepEqual(diffRange('abcXdef', 'abcYYdef'), { from: 3, to: 4, insert: 'YY' });
   assert.equal(apply('abc', [diffRange('abc', 'abc')]), 'abc');
+});
+
+const nested = '---\n\nkanban-plugin: board\n\n---\n\n## Week\n\n- [ ] own\n\n### Mon\n\n- [ ] a\n\n### Tue\n\n- [x] b\n\n## Next\n\n- [ ] c\n\n# Group\n\n## Inside\n\n- [ ] d\n\n***\n\n## Archive\n\n- [x] old\n\n%% kanban:settings\n```\n{}\n```\n%%';
+
+test('heading levels nest lanes; own cards stop at the first sublane', async () => {
+  const { subtreeSize } = await import('../src/kanban.mjs');
+  const lanes = parse(nested), board = lanes.filter(l => !l.archive);
+  assert.deepEqual(lanes.map(l => [l.title, l.level, l.parent?.title ?? null]), [
+    ['Week', 2, null], ['Mon', 3, 'Week'], ['Tue', 3, 'Week'], ['Next', 2, null], ['Group', 1, null], ['Inside', 2, 'Group'], ['Archive', 2, null]]);
+  assert.deepEqual(board[0].cards.map(c => c.text), ['own']);
+  assert.deepEqual(board.map((_, i) => subtreeSize(board, i)), [3, 1, 1, 1, 2, 1]);
+  assert.equal(board[0].treeEnd, board[2].end);
+  // The archive lane is never part of a board lane's subtree.
+  assert.equal(subtreeSize(lanes, 4), 2);
+});
+
+test('moving, deleting and archiving a lane take its sublanes along', () => {
+  const lanes = parse(nested), [week, mon, tue, next] = lanes;
+  let t = apply(nested, moveLane(nested, week, null));
+  assert.deepEqual(parse(t).filter(l => !l.archive).map(l => l.title), ['Next', 'Group', 'Inside', 'Week', 'Mon', 'Tue']);
+  // Into Next as its last sublist: the headings shift one level down, the sublanes keep their depth under it.
+  t = apply(nested, moveLane(nested, week, parse(nested)[4], 3));
+  assert.deepEqual(parse(t).slice(0, 4).map(l => [l.title, l.level, l.parent?.title ?? null]), [['Next', 2, null], ['Week', 3, 'Next'], ['Mon', 4, 'Week'], ['Tue', 4, 'Week']]);
+  // Out of Week in place: only the heading changes.
+  t = apply(nested, moveLane(nested, tue, next, 2));
+  assert.equal(t, nested.replace('### Tue', '## Tue'));
+  assert.deepEqual(moveLane(nested, mon, tue), []);
+  assert.deepEqual(moveLane(nested, week, mon), []);
+  t = apply(nested, deleteLane(nested, week));
+  assert.deepEqual(parse(t).map(l => l.title), ['Next', 'Group', 'Inside', 'Archive']);
+  t = apply(nested, archiveLane(nested, week));
+  assert.deepEqual(parse(t).find(l => l.archive).cards.map(c => c.text), ['old', 'own', 'a', 'b']);
+  assert.equal(parse(t)[0].title, 'Next');
+});
+
+test('new and renamed lanes keep their heading level', () => {
+  const lanes = parse(nested);
+  assert.match(apply(nested, renameLane(nested, lanes[1], 'Monday')), /\n### Monday\n/);
+  assert.match(apply(nested, addLane(nested, 'Wed', lanes[3], 3)), /- \[x\] b\n\n### Wed\n\n\n\n## Next/);
+});
+
+test('collapse flags follow a lane block when it moves', () => {
+  // lanes 0..4, block of 2 at index 1 (flags b, c) moves before lane 4, then to the front
+  const fold = ['a', 'b', 'c', 'd', 'e'];
+  assert.deepEqual(moveFlags(fold, 1, 2, 4), ['a', 'd', 'b', 'c', 'e']);
+  assert.deepEqual(moveFlags(fold, 3, 2, 0), ['d', 'e', 'a', 'b', 'c']);
+  assert.deepEqual(moveFlags(fold, 1, 2, 5), ['a', 'd', 'e', 'b', 'c']);
+  assert.deepEqual(moveFlags(['x'], 0, 1, 3), [undefined, undefined, 'x']);
+});
+
+test('a lane whose only card sits right under its heading keeps its blank lines when the card moves out and back', () => {
+  for (const real of [
+    '---\n\nkanban-plugin: board\n\n---\n\n## A\n- [ ] only\n\n## B\n\n- [ ] b1\n\n',
+    '---\n\nkanban-plugin: board\n\n---\n\n## A\n\n- [ ] only\n\n## B\n\n- [ ] b1\n\n',
+  ]) {
+    let l = parse(real);
+    let t = apply(real, moveCard(real, l[0].cards[0], l[1], null));
+    l = parse(t);
+    t = apply(t, moveCard(t, l[1].cards.at(-1), l[0], null));
+    assert.equal(t, real);
+  }
 });

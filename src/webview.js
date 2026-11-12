@@ -3,14 +3,16 @@ import { isKanban } from './kanban.mjs';
 import { vscode, text, setText, note } from './shared.js';
 import { showEditor, updateEditor, setNames, imageResolved } from './preview.js';
 import { showBoard, updateBoard, toolbar } from './board.js';
+import { outlinePanel, setOutlineView } from './outline.js';
 
-let view = null, mode = null, kanban = false;
+let view = null, mode = null, kanban = false, folds = [];
 const bar = toolbar(() => setMode(mode === 'board' ? 'text' : 'board'));
 
 function setMode(m) {
   mode = m;
   bar.show(kanban, m === 'board');
-  if (m === 'board') { view = null; showBoard(); } else view = showEditor();
+  if (m === 'board') { view = null; showBoard(); } else view = showEditor(folds);
+  setOutlineView(view);
 }
 
 const font = px => document.documentElement.style.setProperty('--size', px + 'px');
@@ -21,6 +23,8 @@ window.addEventListener('message', ({ data: m }) => {
     kanban = isKanban(text);
     note.title = m.title || '';
     font(m.fontSize);
+    folds = m.folds || [];
+    outlinePanel(!!m.outline, bar.outline);
     setMode(kanban ? 'board' : 'text');
   } else if (m.type === 'update') {
     const next = m.text.replace(/\r\n/g, '\n');

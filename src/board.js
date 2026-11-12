@@ -34,6 +34,7 @@ export function updateBoard(next) {
 
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const boardLanes = () => K.parse(text).filter(l => !l.archive);
+const lanePath = l => (l.parent ? lanePath(l.parent) + ' / ' : '') + l.title;
 const isComplete = (s, lane) => (s['complete-lists'] || []).includes(lane.title);
 const searchKey = card => [card.text, ...card.subs.map(x => x.text)].join(' ').toLowerCase();
 const ddmmyy = () => { const [y, m, d] = today().split('-'); return `${d}/${m}/${y.slice(2)}`; };
@@ -65,6 +66,7 @@ const ICONS = {
   dots: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  outline: '<path d="M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3"/>',
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
 const iconBtn = (name, title, cls = 'icon-btn') => { const b = el('button', cls); b.innerHTML = icon(name); b.title = title; return b; };
@@ -159,7 +161,7 @@ function editCard(node, card) {
 
 function cardMenu(e, lane, card, s) {
   e.preventDefault();
-  const moveTo = boardLanes().filter(l => l.start !== lane.start).map(l => ['board', l.title, () => edit(K.moveCard(text, card, l, null, isComplete(s, l)))]);
+  const moveTo = boardLanes().filter(l => l.start !== lane.start).map(l => ['board', lanePath(l), () => edit(K.moveCard(text, card, l, null, isComplete(s, l)))]);
   const del = ['trash', '!Delete card', () => edit(K.deleteCard(text, card))];
   const items = lane.archive ? [['board', 'Move to list', moveTo], '-', del] : [
     ['edit', 'Edit card', () => editCard(e.target.closest('.card') || e.target.closest('tr').cells[1], card)],
@@ -185,18 +187,36 @@ function cardMenu(e, lane, card, s) {
   menu(e.clientX, e.clientY, items);
 }
 
+// Move lane `li` and its sublanes before lane `to` (an index, lanes.length for the end) at heading `level`,
+// keeping the `list-collapse` flags with their lanes.
+function moveBlock(lanes, li, to, level) {
+  const n = K.subtreeSize(lanes, li), fold = K.settings(text)['list-collapse'];
+  const changes = K.moveLane(text, lanes[li], lanes[to] || null, level);
+  if (!changes.length) return;
+  edit([...changes, ...(fold ? K.setSetting(text, 'list-collapse', K.moveFlags(fold, li, n, to, lanes.length).map(f => !!f)) : [])]);
+}
+
 // `li` is the lane's index among the board lanes, which Obsidian's `list-collapse` flags follow.
 function laneMenu(e, lane, li) {
   const sort = by => () => edit(K.sortLane(text, lane, by));
+  const lanes = boardLanes(), n = K.subtreeSize(lanes, li), pi = lanes.findIndex(l => l.start === lane.parent?.start);
+  const add = (at, level) => () => { renameNext = at; edit([...K.addLane(text, 'New list', lanes[at] || null, level), ...K.foldSplice(text, at, 0, 1)]); };
+  // A list can go into any list outside its own subtree; it becomes the last sublist there.
+  const into = lanes.map((l, i) => [l, i]).filter(([l, i]) => (i < li || i >= li + n) && l.level < 6)
+    .map(([l, i]) => ['board', lanePath(l), () => moveBlock(lanes, li, i + K.subtreeSize(lanes, i), l.level + 1)]);
   menu(e.clientX, e.clientY, [
     ['edit', 'Edit list', () => { renameNext = li; showBoard(); }],
     ['archive', 'Archive cards', () => edit(K.archiveCards(text, lane.cards.filter(c => c.checked)))],
     '-',
-    ['listBefore', 'Insert list before', () => { renameNext = li; edit([...K.addLane(text, 'New list', lane), ...K.foldSplice(text, li, 0, 1)]); }],
-    ['listAfter', 'Insert list after', () => { renameNext = li + 1; edit([...K.addLane(text, 'New list', boardLanes()[li + 1] || null), ...K.foldSplice(text, li + 1, 0, 1)]); }],
+    ['listBefore', 'Insert list before', add(li, lane.level)],
+    ['listAfter', 'Insert list after', add(li + n, lane.level)],
+    ...(lane.level < 6 ? [['plus', 'Add sublist', add(li + n, lane.level + 1)]] : []),
     '-',
-    ['archive', 'Archive list', () => edit([...K.archiveLane(text, lane), ...K.foldSplice(text, li, 1)])],
-    ['trash', '!Delete list', () => edit([...K.deleteLane(text, lane), ...K.foldSplice(text, li, 1)])],
+    ['board', 'Move into list', into],
+    ...(pi >= 0 ? [['listBefore', 'Move out of ' + lane.parent.title, () => moveBlock(lanes, li, pi + K.subtreeSize(lanes, pi), lane.parent.level)]] : []),
+    '-',
+    ['archive', 'Archive list', () => edit([...K.archiveLane(text, lane), ...K.foldSplice(text, li, n)])],
+    ['trash', n > 1 ? '!Delete list and its sublists' : '!Delete list', () => edit([...K.deleteLane(text, lane), ...K.foldSplice(text, li, n)])],
     '-',
     ['sort', 'Sort by', [['text', 'Card text', sort('text')], ['date', 'Date', sort('date')]]],
   ]);
@@ -317,9 +337,16 @@ function laneEl(lane, li, s, collapsed, drag) {
     title.ondblclick = () => editLane(title, lane);
   }
   col.append(head);
-  col.ondragover = e => { if (drag.v) { e.preventDefault(); col.classList.add('over'); } };
+  // Sublanes sit inside their parent's box, so only the innermost lane under the pointer takes the drop.
+  col.ondragover = e => {
+    if (!drag.v) return;
+    e.preventDefault();
+    e.stopPropagation();
+    for (const o of root.querySelectorAll('.lane.over')) if (o !== col) o.classList.remove('over');
+    col.classList.add('over');
+  };
   col.ondragleave = e => { if (!col.contains(e.relatedTarget)) col.classList.remove('over'); };
-  col.ondrop = e => { e.preventDefault(); col.classList.remove('over'); drag.drop(lane, li, null); };
+  col.ondrop = e => { e.preventDefault(); e.stopPropagation(); col.classList.remove('over'); drag.drop(lane, li, null); };
   if (renameNext === li) {
     renameNext = null;
     setTimeout(() => editLane(title, lane));
@@ -354,7 +381,7 @@ function tableView(lanes, s) {
     const c = tr.insertCell();
     c.innerHTML = inline(card.text.replace(K.TAG, '$1').replace(/\s*@\{[^}]*\}/g, '').trim());
     if (card.checked) c.className = 'done';
-    tr.insertCell().textContent = lane.title;
+    tr.insertCell().textContent = lanePath(lane);
     tr.insertCell().innerHTML = inline(K.dateOf(card.text) ? `@{${K.dateOf(card.text)}}` : '');
     tr.insertCell().innerHTML = inline(K.tagsOf(card.text).join(' '));
   }
@@ -362,7 +389,8 @@ function tableView(lanes, s) {
   return wrap;
 }
 
-// Moving a card (onto a lane or before a card) or a lane (before or after the target lane).
+// Moving a card (onto a lane or before a card) or a lane with its sublanes (before or after the target lane).
+// A dropped lane takes the target's level, so dropping it beside a sublist makes it a sibling there.
 function dropper(lanes, s) {
   const drag = { v: null };
   drag.drop = (lane, li, before) => {
@@ -370,11 +398,8 @@ function dropper(lanes, s) {
     drag.v = null;
     if (!d) return;
     if (d.lane) {
-      if (lane.archive || li === d.li) return;
-      const order = lanes.map((_, i) => i).filter(i => i !== d.li);
-      order.splice(order.indexOf(li) + (d.li > li ? 0 : 1), 0, d.li);
-      const fold = s['list-collapse'];
-      edit([...K.moveLane(text, d.lane, d.li > li ? lane : lanes[li + 1] || null), ...(fold ? K.setSetting(text, 'list-collapse', order.map(i => !!fold[i])) : [])]);
+      if (lane.archive || (li >= d.li && li < d.li + K.subtreeSize(lanes, d.li))) return;
+      moveBlock(lanes, d.li, d.li > li ? li : li + K.subtreeSize(lanes, li), lane.level);
     } else if (lane.archive) {
       edit(K.archiveCards(text, [d.card]));
     } else {
@@ -399,7 +424,19 @@ export function showBoard() {
     const board = el('div', 'board');
     if (s['lane-width']) board.style.setProperty('--lane', s['lane-width'] + 'px');
     const collapsed = s['list-collapse'] || [], drag = dropper(lanes, s);
-    lanes.forEach((lane, li) => board.append(laneEl(lane, li, s, !!collapsed[li], drag)));
+    // Sublanes go inside their parent's box, after its own cards; a collapsed parent hides them.
+    const render = (lane, li) => {
+      const col = laneEl(lane, li, s, !!collapsed[li], drag);
+      const kids = lanes.map((l, i) => [l, i]).filter(([l]) => l.parent === lane);
+      if (kids.length && !collapsed[li]) {
+        const sub = el('div', 'sublanes');
+        for (const [l, i] of kids) sub.append(render(l, i));
+        col.append(sub);
+        col.classList.add('parent');
+      }
+      return col;
+    };
+    lanes.forEach((lane, li) => { if (!lane.parent) board.append(render(lane, li)); });
     const arch = all.find(l => l.archive);
     if (showArchive && arch) board.append(laneEl(arch, -1, s, false, drag));
     const add = el('button', 'add-lane', '+ Add a list');
@@ -444,10 +481,14 @@ export function toolbar(toggleMode) {
       ['archive', showArchive ? 'Hide archive' : 'Show archive', () => { showArchive = !showArchive; showBoard(); }],
     ]);
   };
-  box.append(q, add, arch, swap, find, eye);
+  const outline = iconBtn('outline', 'Outline');
+  box.append(q, add, arch, swap, find, eye, outline);
   return {
+    outline,
     show(kanban, board) {
-      box.hidden = !kanban;
+      box.hidden = false;
+      swap.hidden = !kanban;
+      outline.hidden = board;
       add.hidden = arch.hidden = find.hidden = eye.hidden = !board;
       if (!board) q.hidden = true;
       swap.innerHTML = icon(board ? 'text' : 'board');

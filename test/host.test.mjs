@@ -56,7 +56,8 @@ vscode.commands.registerCommand = (id, f) => { cmds[id] = f; return {}; };
 vscode.workspace.onDidChangeConfiguration = () => ({ dispose() {} });
 vscode.workspace.getConfiguration = () => ({ get: (_k, d) => d });
 vscode.window.tabGroups.all = [];
-ext.activate({ subscriptions: { push: (...a) => subs.push(...a) }, extensionUri: 'ext' });
+const memento = () => { const m = new Map(); return { get: (k, d) => m.has(k) ? m.get(k) : d, update: async (k, v) => { m.set(k, v); } }; };
+ext.activate({ subscriptions: { push: (...a) => subs.push(...a) }, extensionUri: 'ext', workspaceState: memento(), globalState: memento() });
 
 let receive;
 function open(text, eol) {
@@ -79,6 +80,18 @@ test('CRLF file: edits land at the right place, keep CRLF, and do not echo back'
   await settle();
   assert.equal(doc.text, '# A\r\nnew line\r\n- [ ] one\r\n- [x] two\r\n');
   assert.equal(posted.filter(m => m.type === 'update').length, 0);
+});
+
+test('folded headings and the outline switch come back when the note opens again', async () => {
+  open('# A\n## B\n', '\n');
+  receive({ type: 'ready' });
+  assert.deepEqual([posted[0].folds, posted[0].outline], [[], false]);
+  receive({ type: 'folds', lines: [2] });
+  receive({ type: 'outline', open: true });
+  await settle();
+  open('# A\n## B\n', '\n');
+  receive({ type: 'ready' });
+  assert.deepEqual([posted[0].folds, posted[0].outline], [[2], true]);
 });
 
 test('edits save the file by themselves, quick edits in one save', async () => {

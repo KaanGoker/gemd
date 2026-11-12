@@ -1,9 +1,11 @@
 // Obsidian Kanban files: front matter with `kanban-plugin:`, `## Lane` headings, `- [ ] card` lines,
+// (Gemd also nests lanes by heading level: a `### Lane` sits inside the `## Lane` above it, a `## Lane` inside a `# Lane`),
 // an optional `***` + `## Archive` section, and a `%% kanban:settings` JSON block at the end.
 // Every edit is a list of {from, to, insert} on the raw text, so nothing outside the touched lines changes.
 // Text is `\n` only: the webview normalizes it, and the host writes the file's own line ends back.
 
 const CARD = /^- (?:\[([ xX])\] ?)?(.*)$/;
+const HEAD = /^(#{1,6}) (.*)$/;
 const SUB = /^\s+- \[([ xX])\] ?(.*)$/;
 
 // Card metadata, one definition for the board, the table view and the live preview.
@@ -20,12 +22,13 @@ export function isKanban(text) {
 
 const settingsAt = text => { const i = text.indexOf('\n%% kanban:settings'); return i === -1 ? text.length : i + 1; };
 
-// Lanes in order; lanes after the `***` line have archive: true.
-// lane: {title, start (heading line), headEnd (after heading), end (next heading, ***, settings or EOF), insertAt, cards}
+// Lanes in order, flat; lanes after the `***` line have archive: true.
+// lane: {title, level (# count), parent (lane or null), start (heading line), headEnd (after heading),
+//   end (next heading, ***, settings or EOF), treeEnd (end of its last sublane), insertAt, cards}
 // card: {start, lineEnd (end of its first line), end (after its subs), checked, text, marker, subs}
 export function parse(text) {
   const lanes = [];
-  let lane = null, card = null, pos = 0, archive = false;
+  let lane = null, card = null, pos = 0, archive = false, stack = [];
   const lines = text.split('\n');
   const stop = settingsAt(text);
   for (let i = 0; i < lines.length; i++) {
@@ -37,13 +40,19 @@ export function parse(text) {
       if (lane) lane.end = start;
       lane = card = null;
       archive = true;
+      stack = [];
       continue;
     }
-    if (line.startsWith('## ')) {
+    const h = HEAD.exec(line);
+    if (h) {
       if (lane) lane.end = start;
-      lane = { title: line.slice(3).trim(), start, headEnd: pos, end: pos, cards: [], insertAt: pos, archive };
-      // An empty lane keeps one blank line under its heading.
-      if (lines[i + 1] === '') lane.insertAt = pos + 1;
+      const level = h[1].length;
+      while (stack.length && stack.at(-1).level >= level) stack.pop();
+      lane = { title: h[2].trim(), level, parent: stack.at(-1) || null, start, headEnd: pos, end: pos, cards: [], insertAt: pos, archive };
+      stack.push(lane);
+      // An empty lane keeps one blank line under its heading; a single blank line before the next
+      // heading belongs below the card (its only card was moved out from there).
+      if (lines[i + 1] === '' && lines[i + 2] === '') lane.insertAt = pos + 1;
       lanes.push(lane);
       card = null;
       continue;
@@ -66,8 +75,20 @@ export function parse(text) {
     }
   }
   if (lane && lane.end > stop) lane.end = stop;
+  lanes.forEach((l, i) => { l.treeEnd = lanes[i + subtreeSize(lanes, i) - 1].end; });
   return lanes;
 }
+
+// How many lanes from `i` on make up lane i's subtree, itself included.
+export function subtreeSize(lanes, i) {
+  let n = 1;
+  while (i + n < lanes.length && lanes[i + n].archive === lanes[i].archive && lanes[i + n].level > lanes[i].level) n++;
+  return n;
+}
+
+const heading = (level, title) => '#'.repeat(level) + ' ' + title.trim();
+// Every heading in a lane block moves by `d` levels, kept within # to ######.
+const shiftHeadings = (b, d) => d ? b.replace(/^(#{1,6}) /gm, (_, h) => '#'.repeat(Math.min(6, Math.max(1, h.length + d))) + ' ') : b;
 
 // The JSON in the `%% kanban:settings` block at the end, or {}.
 export function settings(text) {
@@ -163,15 +184,15 @@ export function archiveCards(text, cards) {
   return [...dels, { from: at, to: at, insert: arch ? body : archiveSection(body) }];
 }
 
-// Archive a whole lane: its cards go to the archive, the lane goes away.
+// Archive a whole lane with its sublanes: their cards go to the archive, the lanes go away.
 export function archiveLane(text, lane) {
-  const body = lane.cards.map(c => block(text, c)).join('');
-  const del = { from: lane.start, to: lane.end, insert: '' };
-  const arch = parse(text).find(l => l.archive);
+  const lanes = parse(text), arch = lanes.find(l => l.archive);
+  const body = lanes.filter(l => !l.archive && l.start >= lane.start && l.start < lane.treeEnd).flatMap(l => l.cards).map(c => block(text, c)).join('');
+  const del = { from: lane.start, to: lane.treeEnd, insert: '' };
   if (arch) return body ? [del, { from: arch.insertAt, to: arch.insertAt, insert: body }] : [del];
   const at = lanesEnd(text);
   // The last lane: replace it with the new archive section in one edit.
-  return at === lane.end ? [{ from: lane.start, to: lane.end, insert: archiveSection(body).slice(1) }] : [del, { from: at, to: at, insert: archiveSection(body) }];
+  return at === lane.treeEnd ? [{ from: lane.start, to: lane.treeEnd, insert: archiveSection(body).slice(1) }] : [del, { from: at, to: at, insert: archiveSection(body) }];
 }
 
 // Where a new lane goes when appended: after the last board lane, before `***` and the settings.
@@ -180,27 +201,37 @@ function lanesEnd(text) {
   return lanes.length ? lanes.at(-1).end : settingsAt(text);
 }
 
-export function addLane(text, title, before = null) {
+export function addLane(text, title, before = null, level = 2) {
   const at = before ? before.start : lanesEnd(text);
   const lead = at > 0 && text[at - 1] !== '\n' ? '\n' : '';
-  return [{ from: at, to: at, insert: `${lead}## ${title.trim()}\n\n\n\n` }];
+  return [{ from: at, to: at, insert: `${lead}${heading(level, title)}\n\n\n\n` }];
 }
 
 export function renameLane(text, lane, title) {
   const end = lane.headEnd - (text[lane.headEnd - 1] === '\n' ? 1 : 0);
-  return [{ from: lane.start, to: end, insert: '## ' + title.trim() }];
+  return [{ from: lane.start, to: end, insert: heading(lane.level, title) }];
 }
 
-export function deleteLane(text, lane) { return [{ from: lane.start, to: lane.end, insert: '' }]; }
+// A lane goes with its sublanes.
+export function deleteLane(text, lane) { return [{ from: lane.start, to: lane.treeEnd, insert: '' }]; }
 
-export function moveLane(text, lane, before) {
+// Move a lane and its sublanes before `before` (or to the end), at heading `level`; the sublanes keep their depth under it.
+export function moveLane(text, lane, before, level = lane.level) {
   const at = before ? before.start : lanesEnd(text);
-  if (at >= lane.start && at <= lane.end) return [];
-  let b = text.slice(lane.start, lane.end);
+  let b = shiftHeadings(text.slice(lane.start, lane.treeEnd), level - lane.level);
+  if (at === lane.start || at === lane.treeEnd) return level === lane.level ? [] : [{ from: lane.start, to: lane.treeEnd, insert: b }];
+  if (at > lane.start && at < lane.treeEnd) return [];
   if (!b.endsWith('\n')) b += '\n';
-  const del = { from: lane.start, to: lane.end, insert: '' };
+  const del = { from: lane.start, to: lane.treeEnd, insert: '' };
   const ins = { from: at, to: at, insert: b };
   return at < lane.start ? [ins, del] : [del, ins];
+}
+
+// The `list-collapse` flags after the block of `n` lanes at `li` moves before lane `to`.
+export function moveFlags(fold, li, n, to, len = Math.max(fold.length, to)) {
+  const order = Array.from({ length: len }, (_, i) => i), moved = order.splice(li, n);
+  order.splice(to > li ? to - n : to, 0, ...moved);
+  return order.map(i => fold[i]);
 }
 
 // Sort the cards of a lane by 'text' or 'date' (cards without a date last); blank lines between cards are dropped.
