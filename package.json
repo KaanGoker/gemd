@@ -2,7 +2,7 @@
   "name": "gemd-notes",
   "displayName": "Gemd",
   "description": "Open your Obsidian vault in Visual Studio Code: live preview, wikilinks, backlinks, callouts, math and Kanban boards.",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "kaangoker",
   "author": {
     "name": "Kaan Goker"
@@ -116,6 +116,36 @@
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
         "when": "!editorTextFocus"
+      },
+      {
+        "command": "gemd.formatKey",
+        "key": "ctrl+b",
+        "mac": "cmd+b",
+        "when": "activeCustomEditorId == 'gemd.markdown' && focusedView == '' && !terminalFocus && !inputFocus"
+      },
+      {
+        "command": "gemd.formatKey",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "activeCustomEditorId == 'gemd.markdown' && focusedView == '' && !terminalFocus && !inputFocus"
+      },
+      {
+        "command": "gemd.formatKey",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "activeCustomEditorId == 'gemd.markdown' && focusedView == '' && !terminalFocus && !inputFocus"
+      },
+      {
+        "command": "gemd.formatKey",
+        "key": "ctrl+/",
+        "mac": "cmd+/",
+        "when": "activeCustomEditorId == 'gemd.markdown' && focusedView == '' && !terminalFocus && !inputFocus"
+      },
+      {
+        "command": "gemd.formatKey",
+        "key": "ctrl+e",
+        "mac": "cmd+e",
+        "when": "activeCustomEditorId == 'gemd.markdown' && focusedView == '' && !terminalFocus && !inputFocus"
       }
     ],
     "configuration": {

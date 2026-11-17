@@ -1,5 +1,5 @@
 // The note editor: CodeMirror with Obsidian-style live preview, tables, KaTeX math, wikilink completion.
-import { EditorState, Annotation, StateField } from '@codemirror/state';
+import { EditorState, EditorSelection, Annotation, StateField, Compartment } from '@codemirror/state';
 import { EditorView, Decoration, ViewPlugin, WidgetType, keymap, drawSelection } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -8,12 +8,19 @@ import { search, searchKeymap } from '@codemirror/search';
 import { autocompletion } from '@codemirror/autocomplete';
 import katex from 'katex';
 import { TAG, diffRange } from './kanban.mjs';
-import { vscode, root, text, setText, follow, inline } from './shared.js';
+import { wrap, link } from './format.mjs';
+import { vscode, root, text, setText, follow, inline, esc } from './shared.js';
+import { findAnchor } from './links.mjs';
 import { outlineChanged } from './outline.js';
 
 const Remote = Annotation.define();
-const images = new Map(), requested = new Set();
+const images = new Map(), requested = new Set(), embeds = new Map();
 let names = [];
+
+// Reading view (Ctrl+E, like Obsidian): read-only, and every line renders, the cursor's too.
+const readingMode = new Compartment();
+const READING = [EditorState.readOnly.of(true), EditorView.editable.of(false)];
+const reading = state => state.facet(EditorState.readOnly);
 
 const hide = Decoration.replace({});
 const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
@@ -85,7 +92,7 @@ function frontMatterEnd(doc) {
 function build(v) {
   const { state } = v, doc = state.doc;
   const active = new Set();
-  for (const r of state.selection.ranges) for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) active.add(n);
+  if (!reading(state)) for (const r of state.selection.ranges) for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) active.add(n);
   const isActive = (from, to) => { for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) if (active.has(n)) return true; return false; };
   const out = [];
   const add = (from, to, deco) => out.push(deco.range(from, to));
@@ -207,6 +214,13 @@ function build(v) {
         const s = l.from + m.index;
         add(s, s + m[0].length, Decoration.replace({ widget: new MathWidget(m[1], false, s) }));
       }
+      // ==highlight==, not inside inline code.
+      for (const m of l.text.matchAll(/==([^=\n]+)==/g)) {
+        if ((l.text.slice(0, m.index).match(/`/g) || []).length % 2) continue;
+        const s = l.from + m.index, e = s + m[0].length;
+        if (on) add(s, e, Decoration.mark({ class: 'cm-highlight' }));
+        else { add(s, s + 2, hide); add(s + 2, e - 2, Decoration.mark({ class: 'cm-highlight' })); add(e - 2, e, hide); }
+      }
       if (/^#{1,6} /.test(l.text)) continue;
       for (const m of l.text.matchAll(TAG)) {
         const s = l.from + m.index + m[1].length;
@@ -279,10 +293,72 @@ function withMath(s) {
   return out + inline(s.slice(last));
 }
 
-// Block widgets (tables and `$$` math) must come from state, not from a view plugin.
+// A small Markdown renderer for embedded notes: headings, tasks, lists, quotes, code, paragraphs.
+function miniMarkdown(src) {
+  let out = '', code = null;
+  for (const l of src.split('\n')) {
+    if (/^\s*(```|~~~)/.test(l)) {
+      if (code === null) code = [];
+      else { out += `<pre>${esc(code.join('\n'))}</pre>`; code = null; }
+      continue;
+    }
+    if (code) { code.push(l); continue; }
+    const h = /^(#{1,6})\s+(.*)$/.exec(l), t = /^(\s*)[-*+]\s+\[([ xX])\]\s?(.*)$/.exec(l), li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(l), q = /^>\s?(.*)$/.exec(l);
+    const pad = s => `style="padding-left:${s.replace(/\t/g, '  ').length / 2 + 0.2}em"`;
+    if (h) out += `<div class="ne-h ne-h${h[1].length}">${inline(h[2])}</div>`;
+    else if (t) out += `<div class="ne-li" ${pad(t[1])}><input type="checkbox" disabled${t[2] === ' ' ? '' : ' checked'}> ${inline(t[3])}</div>`;
+    else if (li) out += `<div class="ne-li" ${pad(li[1])}>${/\d/.test(li[2]) ? li[2] : '•'} ${inline(li[3])}</div>`;
+    else if (q) out += `<blockquote>${inline(q[1])}</blockquote>`;
+    else if (l.trim()) out += `<p>${inline(l)}</p>`;
+  }
+  if (code) out += `<pre>${esc(code.join('\n'))}</pre>`;
+  return out;
+}
+
+// `![[Note]]` on its own line shows the note (or `#Heading`, `#^block`) in a box; the host sends the text.
+class NoteEmbed extends WidgetType {
+  constructor(target, from) { super(); this.target = target; this.from = from; }
+  eq(o) { return o.target === this.target && o.from === this.from; }
+  toDOM(v) {
+    const box = document.createElement('div');
+    box.className = 'cm-note-embed';
+    const head = document.createElement('a');
+    head.className = 'cm-wikilink ne-title';
+    head.dataset.target = this.target;
+    head.textContent = this.target.replace('#', ' > ');
+    const body = document.createElement('div');
+    body.className = 'ne-body';
+    body.dataset.embed = this.target;
+    box.append(head, body);
+    fillEmbed(body, this.target);
+    box.onmousedown = e => {
+      e.preventDefault();
+      const a = e.target.closest('[data-target],[data-href]');
+      if (a) return follow(a);
+      if (reading(v.state)) return;
+      v.dispatch({ selection: { anchor: this.from } });
+      v.focus();
+    };
+    return box;
+  }
+  ignoreEvent() { return true; }
+}
+function fillEmbed(body, target) {
+  if (!embeds.has(target)) { body.textContent = '…'; vscode.postMessage({ type: 'embed', name: target }); return; }
+  const t = embeds.get(target);
+  body.classList.toggle('missing', t == null);
+  body.innerHTML = t == null ? `${esc(target)} not found` : miniMarkdown(t);
+}
+// Shortcut: an embed shows the note as it was when this note opened; reopen the note to refresh it.
+export function embedded(name, t) {
+  embeds.set(name, t);
+  for (const b of document.querySelectorAll(`[data-embed="${CSS.escape(name)}"]`)) fillEmbed(b, name);
+}
+
+// Block widgets (tables, `$$` math, note embeds) must come from state, not from a view plugin.
 function blocks(state) {
   const doc = state.doc, sel = state.selection.ranges, out = [], code = [];
-  const outside = (from, to) => !sel.some(r => r.to >= from && r.from <= to);
+  const outside = (from, to) => reading(state) || !sel.some(r => r.to >= from && r.from <= to);
   syntaxTree(state).iterate({ enter: n => {
     if (CODE.has(n.name)) { code.push([n.from, n.to]); return false; }
     if (n.name !== 'Table') return;
@@ -291,8 +367,14 @@ function blocks(state) {
     return false;
   } });
   const inCode = pos => code.some(([a, b]) => pos >= a && pos <= b);
+  const fm = frontMatterEnd(doc);
   for (let n = 1; n <= doc.lines; n++) {
     const l = doc.line(n);
+    const em = /^\s*!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/.exec(l.text);
+    if (em && l.from > fm && !IMG.test(em[1].split('#')[0].trim()) && !inCode(l.from) && outside(l.from, l.to)) {
+      out.push(Decoration.replace({ widget: new NoteEmbed(em[1].trim(), l.from), block: true }).range(l.from, l.to));
+      continue;
+    }
     if (!l.text.trimStart().startsWith('$$') || inCode(l.from)) continue;
     let end = n;
     const one = l.text.trim();
@@ -313,7 +395,7 @@ function blocks(state) {
 
 const blockField = StateField.define({
   create: blocks,
-  update: (v, tr) => tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? blocks(tr.state) : v,
+  update: (v, tr) => tr.docChanged || tr.selection || tr.reconfigured || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? blocks(tr.state) : v,
   provide: f => EditorView.decorations.from(f),
 });
 
@@ -333,10 +415,27 @@ function toggleTask(v) {
   return true;
 }
 
+// Apply a format.mjs edit to every selection range.
+const format = fn => v => {
+  const doc = v.state.doc.toString();
+  v.dispatch(v.state.changeByRange(r => {
+    const e = fn(doc, r.from, r.to), changes = v.state.changes(e.changes);
+    return { changes, range: EditorSelection.range(e.from, e.to) };
+  }));
+  return true;
+};
+// Obsidian's default formatting hotkeys (Ctrl+E is in webview.js); VS Code's own use of these keys is turned off in package.json.
+const formatKeys = [
+  { key: 'Mod-b', run: format((t, f, to) => wrap(t, f, to, '**')) },
+  { key: 'Mod-i', run: format((t, f, to) => wrap(t, f, to, '*')) },
+  { key: 'Mod-/', run: format((t, f, to) => wrap(t, f, to, '%%')) },
+  { key: 'Mod-k', run: format(link) },
+];
+
 const livePreview = ViewPlugin.fromClass(class {
   constructor(v) { this.decorations = build(v); }
   update(u) {
-    if (u.docChanged || u.viewportChanged || u.selectionSet || u.transactions.some(foldChanged) || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
+    if (u.docChanged || u.viewportChanged || u.selectionSet || u.transactions.some(t => t.reconfigured) || u.transactions.some(foldChanged) || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
   }
 }, { decorations: p => p.decorations });
 
@@ -346,13 +445,46 @@ const clicks = EditorView.domEventHandlers({
     const el = e.target.closest('[data-target],[data-href]');
     if (!el) return false;
     const line = v.state.doc.lineAt(v.posAtDOM(el)).number;
-    const raw = v.state.selection.ranges.some(r => v.state.doc.lineAt(r.head).number === line);
+    const raw = !reading(v.state) && v.state.selection.ranges.some(r => v.state.doc.lineAt(r.head).number === line);
     if (raw && !(e.ctrlKey || e.metaKey)) return false;
     e.preventDefault();
     follow(el);
     return true;
   },
+  // A pasted image goes to the host, which saves it like Obsidian and answers with its name (see `pasted`).
+  paste(e, v) {
+    const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/'));
+    if (!f || reading(v.state)) return false;
+    e.preventDefault();
+    const ext = { 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' }[f.type] || f.type.slice(6);
+    const r = new FileReader();
+    r.onload = () => vscode.postMessage({ type: 'paste', ext, data: String(r.result).split(',')[1] });
+    r.readAsDataURL(f);
+    return true;
+  },
 });
+
+export function pasted(view, name) {
+  if (view) view.dispatch(view.state.replaceSelection(`![[${name}]]`));
+}
+
+// Scroll to `#Heading` or `#^block` from a link.
+export function revealAnchor(view, sub) {
+  if (!view) return;
+  const i = findAnchor(view.state.doc.toString(), sub);
+  if (i < 0) return vscode.postMessage({ type: 'warn', text: `No "${sub}" in this note` });
+  const pos = view.state.doc.line(i + 1).from;
+  view.dispatch({ selection: reading(view.state) ? undefined : { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 40 }) });
+  view.focus();
+}
+
+export function toggleReading(view) {
+  if (!view) return;
+  const on = !reading(view.state);
+  view.dispatch({ effects: readingMode.reconfigure(on ? READING : []) });
+  root.classList.toggle('reading', on);
+  if (!on) view.focus();
+}
 
 // `[[` offers every note name in the workspace; picking one closes the link unless `]]` is already there.
 function wikiComplete(ctx) {
@@ -403,9 +535,10 @@ export function showEditor(folds = []) {
         markdown({ base: markdownLanguage }),
         // Undo and redo belong to VS Code, which owns the document; swallow the keys so the browser does not undo too.
         codeFolding(),
-        keymap.of([{ key: 'Mod-l', run: toggleTask }, { key: 'Mod-z', run: () => true }, { key: 'Mod-y', run: () => true }, { key: 'Mod-Shift-z', run: () => true }, indentWithTab, ...searchKeymap, ...foldKeymap, ...defaultKeymap]),
+        keymap.of([{ key: 'Mod-l', run: toggleTask }, ...formatKeys, { key: 'Mod-z', run: () => true }, { key: 'Mod-y', run: () => true }, { key: 'Mod-Shift-z', run: () => true }, indentWithTab, ...searchKeymap, ...foldKeymap, ...defaultKeymap]),
         search({ top: true }),
         autocompletion({ override: [wikiComplete], icons: false }),
+        readingMode.of([]),
         livePreview,
         blockField,
         clicks,
@@ -440,7 +573,7 @@ export const setNames = n => { names = n; };
 export function imageResolved(name, src) {
   images.set(name, src);
   for (const img of document.querySelectorAll(`img[data-name="${CSS.escape(name)}"]`)) {
-    if (src) img.src = src;
+    if (src) { img.src = src; img.classList.remove('missing'); }
     else img.classList.add('missing');
   }
 }

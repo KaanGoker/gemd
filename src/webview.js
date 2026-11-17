@@ -1,7 +1,7 @@
 // The webview: a note opens in the live preview editor, an Obsidian Kanban file as a board (with a switch to text).
 import { isKanban } from './kanban.mjs';
 import { vscode, text, setText, note } from './shared.js';
-import { showEditor, updateEditor, setNames, imageResolved } from './preview.js';
+import { showEditor, updateEditor, setNames, imageResolved, embedded, pasted, revealAnchor, toggleReading } from './preview.js';
 import { showBoard, updateBoard, toolbar } from './board.js';
 import { outlinePanel, setOutlineView } from './outline.js';
 
@@ -36,6 +36,21 @@ window.addEventListener('message', ({ data: m }) => {
     setNames(m.names);
   } else if (m.type === 'resolved') {
     imageResolved(m.name, m.src);
+  } else if (m.type === 'embedded') {
+    embedded(m.name, m.text);
+  } else if (m.type === 'pasted') {
+    pasted(view, m.name);
+  } else if (m.type === 'reveal') {
+    if (mode === 'board' && kanban) return;
+    revealAnchor(view, m.sub);
+  }
+});
+
+// Ctrl+E switches a note between editing and reading, like Obsidian; window-level so it works while read-only.
+window.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e' && view) {
+    e.preventDefault();
+    toggleReading(view);
   }
 });
 vscode.postMessage({ type: 'ready' });

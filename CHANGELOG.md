@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.5
+
+- Obsidian hotkeys in notes: `Ctrl+B` bold, `Ctrl+I` italic, `Ctrl+K` link, `Ctrl+/` comment, `Ctrl+E` reading view.
+- A pasted image is saved as `Pasted image <date>.png` (in the attachment folder set in `.obsidian/app.json`, else next to the note) and linked.
+- Renaming a file updates the links to it in every note.
+- `![[Note]]`, `![[Note#Heading]]` show that note or section; `[[Note#Heading]]` and `[[#Heading]]` scroll to the heading.
+- `==highlight==` shows in notes.
+- A list's Archive cards also takes the checked cards of its sublists; a collapsed list keeps its menu and drag handle.
+
 ## 1.0.4
 
 - Board lists nest by heading level: `#` is a group, `##` a list, `###` a sublist inside it.

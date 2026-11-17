@@ -54,6 +54,7 @@ vscode.workspace.createFileSystemWatcher = () => ({ onDidChange: () => ({}), onD
 const cmds = {};
 vscode.commands.registerCommand = (id, f) => { cmds[id] = f; return {}; };
 vscode.workspace.onDidChangeConfiguration = () => ({ dispose() {} });
+vscode.workspace.onDidRenameFiles = () => ({});
 vscode.workspace.getConfiguration = () => ({ get: (_k, d) => d });
 vscode.window.tabGroups.all = [];
 const memento = () => { const m = new Map(); return { get: (k, d) => m.has(k) ? m.get(k) : d, update: async (k, v) => { m.set(k, v); } }; };

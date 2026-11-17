@@ -11,13 +11,14 @@ I used Obsidian for notes and VS Code for code. Gemd opens the same Markdown fil
 ## Features
 
 - **Live preview.** Headings, bold, links and checkboxes render as you type. The line under the cursor shows its raw Markdown, like in Obsidian.
-- **Wikilinks.** `[[Note]]`, `[[Note|alias]]` and `[[folder/Note]]` open the note; a link to a missing note offers to create it. Typing `[[` suggests every note in the workspace.
+- **Wikilinks.** `[[Note]]`, `[[Note|alias]]` and `[[folder/Note]]` open the note; a link to a missing note offers to create it. Typing `[[` suggests every note in the workspace. `[[Note#Heading]]` scrolls to the heading, and renaming a file updates every link to it.
 - **Callouts, tables and math.** `> [!tip]` callouts in their colors, GitHub tables as real tables, and KaTeX for `$inline$` and `$$block$$` math. Prices like `$5 and $10` stay text.
-- **Images.** `![[image.png]]` and `![](path/image.png)` embeds, with `|300` widths.
+- **Images.** `![[image.png]]` and `![](path/image.png)` embeds, with `|300` widths. A pasted screenshot is saved next to the note as `Pasted image <date>.png` and linked at the cursor.
+- **Embeds and highlights.** `![[Note]]` or `![[Note#Heading]]` shows that note or section in a box. `==text==` gets a highlight.
 - **Folding and outline.** Hover a heading to get the arrow that folds its section, subheadings included. Folded sections stay closed the next time you open the note. The outline button shows the headings as a tree on the right: click one to jump to it, or fold its branches.
 - **Backlinks.** A panel in the Explorer lists the notes that link to the open note.
 - **Kanban boards.** Files made by the Obsidian Kanban plugin open as boards: drag cards and lists, collapse lists, archive cards or whole lists, dates with `@{2026-10-23}`, a search box, and board, list and table views. Card and list menus follow the Obsidian plugin. Lists nest by heading level, so a `###` heading becomes a sublist inside the `##` list above it.
-- **Obsidian habits.** `Ctrl+L` turns a line into a task and ticks it. `Ctrl+N` makes a new note, and closing the last tab shows a New tab page with New note, New board and Go to file.
+- **Obsidian habits.** `Ctrl+B`, `Ctrl+I`, `Ctrl+K` and `Ctrl+/` make bold, italic, a link and a comment. `Ctrl+E` switches between editing and reading. `Ctrl+L` turns a line into a task and ticks it. `Ctrl+N` makes a new note, and closing the last tab shows a New tab page with New note, New board and Go to file.
 - **Go to Folder.** `Ctrl+Shift+O` (outside a text editor, where it stays Go to Symbol) finds any folder in the vault and shows it in the Explorer.
 - **One text size.** `gemd.fontSize` sets notes, boards and the toolbar together.
 

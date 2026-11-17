@@ -94,7 +94,7 @@ body.outline-on #root.editor { margin-right: 260px; }
 .cm-table-wrap tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, transparent); }
 .cm-table-wrap code, .card code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); border-radius: 3px; padding: 0 4px; }
 .cm-table-wrap a, .card a, .table-view a { color: var(--accent); cursor: pointer; }
-mark { background: rgba(255, 208, 0, 0.35); color: inherit; border-radius: 2px; padding: 0 2px; }
+mark, .cm-highlight { background: rgba(255, 208, 0, 0.35); color: inherit; border-radius: 2px; padding: 0 2px; }
 
 /* ---------- board ---------- */
 .board-root { font: calc(var(--size) * 0.875)/1.5 var(--sans); }
@@ -116,12 +116,10 @@ mark { background: rgba(255, 208, 0, 0.35); color: inherit; border-radius: 2px; 
 .lane.collapsed { flex: 0 0 44px; padding: 10px 4px; }
 .lane.collapsed header { flex-direction: column; margin: 0; }
 .lane.collapsed header h3 { writing-mode: vertical-rl; white-space: nowrap; overflow: visible; }
-.lane.collapsed header .more { display: none; }
 svg.icon { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
 .lane header .grip { color: var(--muted); opacity: 0.6; display: inline-flex; cursor: grab; }
 .lane .fold svg { transition: transform 0.15s; }
 .lane.collapsed .fold svg { transform: rotate(-90deg); }
-.lane.collapsed .grip { display: none; }
 .lane-edit { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 0.9em; }
 .lane-edit input:not([type]) { font: inherit; font-size: 1.1em; font-weight: 650; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 6px; }
 .lane-edit label { display: flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
@@ -196,3 +194,13 @@ button.fold:hover, button.more:hover { color: var(--text); background: color-mix
 .cm-tooltip-autocomplete li[aria-selected] { background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground)) !important; color: inherit !important; }
 .cm-math { cursor: text; }
 .cm-math-block { padding: 6px 0; overflow-x: auto; cursor: text; text-align: center; }
+
+.cm-note-embed { border-left: 3px solid var(--accent); padding: 4px 12px 6px; margin: 4px 0; background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 0 4px 4px 0; cursor: text; }
+.cm-note-embed .ne-title { display: block; font-size: 0.85em; margin-bottom: 4px; }
+.cm-note-embed .ne-body.missing { color: var(--muted); font-style: italic; }
+.cm-note-embed p, .cm-note-embed blockquote { margin: 0.25em 0; }
+.cm-note-embed blockquote { border-left: 2px solid var(--line); padding-left: 8px; color: var(--muted); }
+.cm-note-embed pre { margin: 0.3em 0; padding: 6px 8px; overflow-x: auto; background: color-mix(in srgb, var(--text) 6%, transparent); border-radius: 4px; }
+.cm-note-embed .ne-h { font-weight: 700; margin: 0.4em 0 0.2em; }
+.cm-note-embed .ne-h1 { font-size: 1.5em; } .cm-note-embed .ne-h2 { font-size: 1.3em; } .cm-note-embed .ne-h3 { font-size: 1.15em; }
+.cm-note-embed .ne-li { margin: 0.1em 0; }

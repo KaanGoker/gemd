@@ -172,6 +172,9 @@ export function linkCard(text, card) {
   return { name, changes: [{ from: s, to: s + card.text.length, insert: `[[${name}]]${rest}` }] };
 }
 
+// Checked cards of lane i and its sublanes, in board order.
+export const checkedInTree = (lanes, i) => lanes.slice(i, i + subtreeSize(lanes, i)).flatMap(l => l.cards.filter(c => c.checked));
+
 const archiveSection = body => `\n***\n\n## Archive\n\n${body}\n`;
 
 // Cards go to the end of the `## Archive` lane after `***`; both are created when missing.

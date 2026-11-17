@@ -206,7 +206,7 @@ function laneMenu(e, lane, li) {
     .map(([l, i]) => ['board', lanePath(l), () => moveBlock(lanes, li, i + K.subtreeSize(lanes, i), l.level + 1)]);
   menu(e.clientX, e.clientY, [
     ['edit', 'Edit list', () => { renameNext = li; showBoard(); }],
-    ['archive', 'Archive cards', () => edit(K.archiveCards(text, lane.cards.filter(c => c.checked)))],
+    ['archive', 'Archive cards', () => edit(K.archiveCards(text, K.checkedInTree(lanes, li)))],
     '-',
     ['listBefore', 'Insert list before', add(li, lane.level)],
     ['listAfter', 'Insert list after', add(li + n, lane.level)],

@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from 'node:fs';
 // Optional: a real Obsidian Kanban file for the lossless tests, e.g. GEMD_BOARD=~/vault/To\ Do.md npm test
 const REAL = process.env.GEMD_BOARD;
 const skipReal = !REAL || !existsSync(REAL);
-import { isKanban, parse, moveCard, toggle, apply, addCard, settings, setSetting, cardSource, editCard, deleteCard, duplicateCard, archiveCards, addLane, renameLane, deleteLane, moveLane, sortLane, archiveLane, blockId, foldSplice, rebase, setDate, linkCard, tagsOf, insertCard, diffRange, subtreeSize, moveFlags } from '../src/kanban.mjs';
+import { isKanban, parse, moveCard, toggle, apply, addCard, settings, setSetting, cardSource, editCard, deleteCard, duplicateCard, archiveCards, addLane, renameLane, deleteLane, moveLane, sortLane, archiveLane, blockId, foldSplice, rebase, setDate, linkCard, tagsOf, insertCard, diffRange, subtreeSize, moveFlags, checkedInTree } from '../src/kanban.mjs';
 
 const sample = '---\n\nkanban-plugin: board\n\n---\n\n## A\n\n- [ ] one #x\n\t- [ ] sub\n- [x] two\n\n\n## B\n\n\n\n## C\n\n- [ ] three\n- plain note\n\n%% kanban:settings\n```\n{"complete-lists":["C"]}\n```\n%%';
 
@@ -266,4 +266,14 @@ test('a lane whose only card sits right under its heading keeps its blank lines 
     t = apply(t, moveCard(t, l[1].cards.at(-1), l[0], null));
     assert.equal(t, real);
   }
+});
+
+test('archiving checked cards of a lane takes those of its sublanes too', () => {
+  const t0 = nested.replace('- [ ] own', '- [x] own').replace('- [ ] a', '- [x] a');
+  const board = parse(t0).filter(l => !l.archive);
+  assert.deepEqual(checkedInTree(board, 0).map(c => c.text), ['own', 'a', 'b']);
+  assert.deepEqual(checkedInTree(board, 1).map(c => c.text), ['a']);
+  const t = apply(t0, archiveCards(t0, checkedInTree(board, 0)));
+  assert.deepEqual(parse(t).map(l => [l.title, l.cards.map(c => c.text)]), [
+    ['Week', []], ['Mon', []], ['Tue', []], ['Next', ['c']], ['Group', []], ['Inside', ['d']], ['Archive', ['old', 'own', 'a', 'b']]]);
 });

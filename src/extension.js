@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const path = require('path');
+const { splitLink, section, renameLinks } = require('./links.mjs');
 
 const VIEW = 'gemd.markdown';
 const EXCLUDE = '**/node_modules/**';
@@ -24,7 +25,17 @@ async function resolve(link, from) {
 
 const decode = s => { try { return decodeURIComponent(s); } catch { return s; } };
 
+// Open notes by uri, so a link to `Note#Heading` can scroll there once its webview is ready.
+const panels = new Map(), reveals = new Map();
+function reveal(uri, sub) {
+  const p = panels.get(uri.toString());
+  if (p?.ready) p.panel.webview.postMessage({ type: 'reveal', sub });
+  else reveals.set(uri.toString(), sub);
+}
+
 async function openLink(link, from) {
+  const sub = splitLink(link)[1];
+  if (!splitLink(link)[0]) return sub ? reveal(from, sub) : undefined;
   let uri = await resolve(link, from);
   if (!uri) {
     const file = link.split('#')[0].trim();
@@ -36,6 +47,62 @@ async function openLink(link, from) {
     await vscode.workspace.fs.writeFile(uri, new Uint8Array());
   }
   await vscode.commands.executeCommand(uri.path.endsWith('.md') ? 'vscode.openWith' : 'vscode.open', uri, ...(uri.path.endsWith('.md') ? [VIEW] : []));
+  if (sub && uri.path.endsWith('.md')) reveal(uri, sub);
+}
+
+const readText = async uri => Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+const exists = async u => { try { await vscode.workspace.fs.stat(u); return true; } catch { return false; } };
+
+// Like Obsidian: `Pasted image YYYYMMDDHHmmss.png` in the attachment folder of `.obsidian/app.json`, next to the note when none is set.
+async function pasteImage(note, ext, data) {
+  if (!/^[a-z0-9]{2,5}$/.test(ext)) return null;
+  const root = vscode.workspace.getWorkspaceFolder?.(note)?.uri;
+  let dir = vscode.Uri.joinPath(note, '..');
+  if (root) {
+    try {
+      const a = JSON.parse(await readText(vscode.Uri.joinPath(root, '.obsidian', 'app.json'))).attachmentFolderPath;
+      if (a === '/') dir = root;
+      else if (a?.startsWith('./') && a.length > 2) dir = vscode.Uri.joinPath(dir, a.slice(2));
+      else if (a && a !== './') dir = vscode.Uri.joinPath(root, a);
+    } catch { /* no app.json: next to the note */ }
+  }
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  let name = `Pasted image ${stamp}.${ext}`;
+  for (let i = 1; await exists(vscode.Uri.joinPath(dir, name)); i++) name = `Pasted image ${stamp} ${i}.${ext}`;
+  await vscode.workspace.fs.createDirectory(dir);
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(dir, name), Buffer.from(data, 'base64'));
+  return name;
+}
+
+// Like Obsidian's "Automatically update internal links": links to a renamed file are rewritten in every note.
+async function updateLinks(files) {
+  const renames = [];
+  for (const { oldUri, newUri } of files) {
+    const a = path.posix.basename(oldUri.path), b = path.posix.basename(newUri.path);
+    if (a === b) continue; // a move: Obsidian links by name still find it
+    try { if ((await vscode.workspace.fs.stat(newUri)).type !== vscode.FileType.File) continue; } catch { continue; }
+    const note = /\.md$/i.test(a);
+    renames.push(note ? [a.slice(0, -3), b.replace(/\.md$/i, ''), true] : [a, b, false]);
+  }
+  if (!renames.length) return;
+  const edit = new vscode.WorkspaceEdit(), docs = [];
+  let links = 0;
+  for (const u of await vscode.workspace.findFiles('**/*.md', EXCLUDE)) {
+    let raw;
+    try { raw = (await readText(u)).toLowerCase(); } catch { continue; }
+    if (!renames.some(([a]) => raw.includes(a.toLowerCase()) || raw.includes(encodeURI(a).toLowerCase()))) continue;
+    const doc = await vscode.workspace.openTextDocument(u);
+    let out = doc.getText(), n = 0;
+    for (const [a, b, note] of renames) { const [t, k] = renameLinks(out, a, b, note); out = t; n += k; }
+    if (!n) continue;
+    edit.replace(u, new vscode.Range(0, 0, doc.lineCount, 0), out);
+    docs.push(doc);
+    links += n;
+  }
+  if (!docs.length || !await vscode.workspace.applyEdit(edit)) return;
+  await Promise.all(docs.map(d => d.save()));
+  vscode.window.setStatusBarMessage(`Gemd: updated ${links} link${links === 1 ? '' : 's'} in ${docs.length} file${docs.length === 1 ? '' : 's'}`, 5000);
 }
 
 const fontSize = () => vscode.workspace.getConfiguration('gemd').get('fontSize', 16);
@@ -43,7 +110,6 @@ const BOARD = '---\n\nkanban-plugin: board\n\n---\n\n## To Do\n\n\n\n%% kanban:s
 
 // Like Obsidian: `Untitled.md`, `Untitled 1.md`, ... in `dir`; an existing note of that exact name just opens.
 async function createNote(dir, name, body = '', number = false) {
-  const exists = async u => { try { await vscode.workspace.fs.stat(u); return true; } catch { return false; } };
   let uri = vscode.Uri.joinPath(dir, name + '.md');
   for (let i = 1; number && await exists(uri); i++) uri = vscode.Uri.joinPath(dir, `${name} ${i}.md`);
   if (!await exists(uri)) await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(body));
@@ -129,6 +195,8 @@ function provider(ctx) {
         localResourceRoots: [ctx.extensionUri, vscode.Uri.joinPath(doc.uri, '..'), ...(vscode.workspace.workspaceFolders || []).map(f => f.uri)],
       };
       panel.webview.html = html(panel.webview, ctx.extensionUri);
+      const key = doc.uri.toString(), entry = { panel, ready: false };
+      panels.set(key, entry);
       const post = () => panel.webview.postMessage({ type: 'update', text: doc.getText() });
       let pending = 0, queue = Promise.resolve(), saveTimer;
       // Changes from elsewhere (undo, git, Syncthing, another editor) go to the webview; our own edits do not echo back.
@@ -141,7 +209,7 @@ function provider(ctx) {
       const cfg = vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('gemd.fontSize')) panel.webview.postMessage({ type: 'font', fontSize: fontSize() });
       });
-      panel.onDidDispose(() => { sub.dispose(); cfg.dispose(); if (saveTimer) { clearTimeout(saveTimer); save(); } });
+      panel.onDidDispose(() => { if (panels.get(key) === entry) panels.delete(key); sub.dispose(); cfg.dispose(); if (saveTimer) { clearTimeout(saveTimer); save(); } });
       panel.webview.onDidReceiveMessage(m => {
         if (m.type === 'ready') {
           panel.webview.postMessage({
@@ -151,6 +219,8 @@ function provider(ctx) {
           vscode.workspace.findFiles('**/*.md', EXCLUDE).then(files => panel.webview.postMessage({
             type: 'names', names: [...new Set(files.map(u => path.posix.basename(u.path, '.md')))].sort(),
           }));
+          entry.ready = true;
+          if (reveals.has(key)) { panel.webview.postMessage({ type: 'reveal', sub: reveals.get(key) }); reveals.delete(key); }
         }
         else if (m.type === 'edit') {
           queue = queue.then(async () => {
@@ -176,6 +246,17 @@ function provider(ctx) {
           const href = String(m.href);
           if (/^(https?|mailto):/i.test(href)) vscode.env.openExternal(vscode.Uri.parse(href));
           else if (!/^[a-z][\w+.-]*:/i.test(href)) openLink(decode(href), doc.uri);
+        } else if (m.type === 'embed') {
+          // `![[Note]]`, `![[Note#Heading]]`: the text to show, or null when the note or the part is missing.
+          const name = String(m.name), [file, sub] = splitLink(name);
+          (file ? resolve(file, doc.uri) : Promise.resolve(doc.uri)).then(async u => {
+            let body = null;
+            if (u) try { body = section(await readText(u), sub); } catch { /* unreadable: shown as missing */ }
+            panel.webview.postMessage({ type: 'embedded', name, text: body });
+          });
+        } else if (m.type === 'paste') {
+          pasteImage(doc.uri, String(m.ext), String(m.data)).then(name => name && panel.webview.postMessage({ type: 'pasted', name }),
+            err => vscode.window.showWarningMessage(`Could not save the pasted image: ${err.message}`));
         } else if (m.type === 'resolve') {
           const src = String(m.name);
           if (/^https?:/i.test(src)) panel.webview.postMessage({ type: 'resolved', name: src, src });
@@ -241,6 +322,7 @@ async function activate(ctx) {
     watcher,
     watcher.onDidChange(reindex),
     watcher.onDidCreate(reindex),
+    vscode.workspace.onDidRenameFiles(e => { if (isVault) updateLinks(e.files); }),
     watcher.onDidDelete(uri => { backlinks.index?.delete(uri.toString()); backlinks.refresh(); }),
     vscode.commands.registerCommand('gemd.open', uri => vscode.commands.executeCommand('vscode.openWith', uri || activeUri(), VIEW)),
     vscode.commands.registerCommand('gemd.newNote', () => newNote(false)),
@@ -253,6 +335,8 @@ async function activate(ctx) {
       if (home && e.opened.length && tabCount() > 1) home.dispose();
       else if (!home && e.closed.length && tabCount() === 0 && !e.closed.some(t => t.input?.viewType?.endsWith('gemd.home'))) showHome(ctx);
     }),
+    // The webview applies Ctrl+B, I, K, / and E itself; this keeps VS Code from also running its own command for the key.
+    vscode.commands.registerCommand('gemd.formatKey', () => {}),
     vscode.commands.registerCommand('gemd.openText', uri => vscode.commands.executeCommand('vscode.openWith', uri || activeUri(), 'default')),
   );
   // Only an Obsidian vault gets Ctrl+N for notes and the New tab page.
